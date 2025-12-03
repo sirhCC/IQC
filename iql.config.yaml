@@ -1,0 +1,19 @@
+# IQL Configuration File
+
+# Plugins to load
+plugins:
+  - name: mock
+    enabled: true
+    description: "Built-in mock data source for testing"
+
+# Output settings
+output:
+  format: table  # table, json, csv, yaml
+  color: true
+  maxRows: 1000
+
+# Performance settings
+performance:
+  cacheEnabled: true
+  cacheTTL: 300  # seconds
+  timeout: 30    # seconds
