@@ -58,23 +58,39 @@ export interface OrderByClause {
 export type Row = Record<string, any>;
 
 export interface QueryResult {
-  columns: string[];
+  columns: ColumnInfo[];
   rows: Row[];
   rowCount: number;
-  executionTime: number;
+  totalCount: number;
+  executionTime?: number;
   source?: string;
 }
 
 export interface TraceResult {
+  identifier: string;
+  value: string;
   hops: TraceHop[];
-  totalTime: number;
+  totalHops: number;
+  totalTime?: number;
 }
 
 export interface TraceHop {
   source: string;
+  table: string;
   timestamp: string;
-  duration: number;
+  duration?: number;
   data: Record<string, any>;
+}
+
+export interface DescribeResult {
+  table: string;
+  source: string;
+  columns: ColumnInfo[];
+}
+
+export interface ShowResult {
+  what: 'TABLES' | 'PLUGINS' | 'SOURCES';
+  items: any[];
 }
 
 // Plugin system
