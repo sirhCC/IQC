@@ -121,6 +121,7 @@ IQL uses a plugin system to connect to different data sources.
 ### Built-in Plugins
 
 - **Mock Plugin** - Sample data for testing (always available)
+- **AWS Plugin** - Query EC2 instances, RDS databases, Lambda functions (requires credentials)
 
 ### Creating Custom Plugins
 
@@ -336,13 +337,3 @@ Built to unify DevOps tooling inspired by:
 - SQL's simplicity and power
 - The pain of juggling multiple infrastructure tools
 - The need for a single pane of glass across clouds and services
-
-## 📧 Contact
-
-Your Name - [@yourhandle](https://twitter.com/yourhandle)
-
-Project Link: [https://github.com/yourusername/iql](https://github.com/yourusername/iql)
-
----
-
-**Made with ❤️ for DevOps Engineers**
