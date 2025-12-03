@@ -24,13 +24,13 @@ export class QueryExecutor {
   async execute(query: Query): Promise<QueryResult | TraceResult | DescribeResult | ShowResult> {
     switch (query.type) {
       case 'SELECT':
-        return this.executeSelect(query.statement);
+        return this.executeSelect(query.statement as SelectStatement);
       case 'TRACE':
-        return this.executeTrace(query.statement);
+        return this.executeTrace(query.statement as TraceStatement);
       case 'DESCRIBE':
-        return this.executeDescribe(query.statement);
+        return this.executeDescribe(query.statement as DescribeStatement);
       case 'SHOW':
-        return this.executeShow(query.statement);
+        return this.executeShow(query.statement as ShowStatement);
       default:
         throw new ExecutionError(`Unsupported query type`);
     }
