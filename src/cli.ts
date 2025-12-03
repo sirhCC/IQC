@@ -11,7 +11,7 @@ import * as path from 'path';
 import chalk from 'chalk';
 import { Parser } from './parser';
 import { QueryExecutor } from './engine';
-import { PluginManager, MockPlugin } from './plugins';
+import { PluginManager, MockPlugin, AWSPlugin } from './plugins';
 import { IQLConfig, QueryResult } from './types';
 
 const program = new Command();
@@ -51,8 +51,28 @@ async function registerPlugins(manager: PluginManager, config?: IQLConfig): Prom
   // Always register mock plugin for testing
   await manager.registerPlugin(new MockPlugin());
   
+  // Register AWS plugin if credentials are available
+  const awsRegion = process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION;
+  const awsProfile = process.env.AWS_PROFILE;
+  const hasAwsCreds = process.env.AWS_ACCESS_KEY_ID || awsProfile;
+  
+  if (hasAwsCreds || awsRegion) {
+    try {
+      const awsPlugin = new AWSPlugin();
+      await manager.registerPlugin(awsPlugin, {
+        region: awsRegion,
+        profile: awsProfile,
+      });
+      console.log(chalk.green('✓ AWS plugin registered'));
+    } catch (error) {
+      console.log(chalk.yellow(`⚠ AWS plugin failed to initialize: ${error instanceof Error ? error.message : 'Unknown error'}`));
+    }
+  } else {
+    console.log(chalk.gray('ℹ AWS plugin not loaded (no credentials found)'));
+  }
+  
   if (config?.plugins) {
-    console.log(chalk.yellow('Custom plugin loading not yet implemented'));
+    console.log(chalk.yellow('Custom plugin loading from config not yet implemented'));
     // TODO: Load custom plugins from config
   }
 }

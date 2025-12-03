@@ -40,6 +40,10 @@
     "typescript": "^5.3.3"
   },
   "dependencies": {
+    "@aws-sdk/client-ec2": "^3.943.0",
+    "@aws-sdk/client-lambda": "^3.943.0",
+    "@aws-sdk/client-rds": "^3.943.0",
+    "@aws-sdk/credential-providers": "^3.943.0",
     "chalk": "^4.1.2",
     "commander": "^11.1.0",
     "yaml": "^2.3.4"
