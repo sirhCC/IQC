@@ -12,6 +12,8 @@ export interface SelectStatement {
   columns: Column[];
   from: string;
   where?: WhereClause;
+  groupBy?: string[];
+  having?: WhereClause;
   orderBy?: OrderByClause[];
   limit?: number;
   offset?: number;
