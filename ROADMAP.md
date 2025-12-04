@@ -5,11 +5,11 @@
 ## 🔴 Critical Priority (Blockers for Real Use)
 
 ### 1. Implement Real Data Source Plugins
-**Status:** Not Started  
+**Status:** ✅ Partially Complete  
 **Effort:** High  
 **Impact:** Critical
 
-Without real plugins, IQL only queries mock data. Need actual connectors:
+AWS plugin implemented with EC2, RDS, Lambda support. Kubernetes and Docker plugins scaffolded but need npm packages.
 
 - **AWS Plugin** (highest demand)
   - EC2 instances (running, stopped, instance types, tags)
@@ -38,11 +38,11 @@ Without real plugins, IQL only queries mock data. Need actual connectors:
 ---
 
 ### 2. Add Authentication/Credentials Management
-**Status:** Not Started  
+**Status:** ✅ Partially Complete  
 **Effort:** Medium  
 **Impact:** Critical
 
-Can't connect to real infrastructure without secure auth:
+AWS credentials working (env vars, profiles, default chain). Need K8s contexts, Docker, credential validation.
 
 - Environment variables (AWS_ACCESS_KEY_ID, etc.)
 - Config file credentials sections
@@ -61,11 +61,11 @@ Can't connect to real infrastructure without secure auth:
 ---
 
 ### 3. Fix YAML Config Parsing
-**Status:** Not Started  
+**Status:** ✅ Complete  
 **Effort:** Low  
 **Impact:** High
 
-Currently shows "YAML parsing not yet implemented" warning. Need to:
+YAML config parsing implemented with env var substitution and plugin loading. Need to:
 
 - Actually parse `iql.config.yaml` using the yaml package
 - Load plugin configurations from config
@@ -97,11 +97,11 @@ output:
 ---
 
 ### 4. Add Proper Error Handling & Logging
-**Status:** Not Started  
+**Status:** ✅ Complete  
 **Effort:** Medium  
 **Impact:** High
 
-Current error handling is basic. Production needs:
+Winston logging integrated with structured logs, retry logic with exponential backoff, timeout handling. Production ready:
 
 - Structured logging (Winston or Pino)
 - Log levels (debug, info, warn, error)
@@ -117,11 +117,11 @@ Current error handling is basic. Production needs:
 ## 🟡 High Priority (Essential for Production)
 
 ### 5. Add Aggregation Functions
-**Status:** Not Started  
+**Status:** ✅ Complete  
 **Effort:** Medium  
 **Impact:** High
 
-SQL without aggregations is severely limited. Need:
+All aggregation functions implemented (COUNT, SUM, AVG, MIN, MAX, GROUP BY, HAVING). Fully functional:
 
 - `COUNT(*)`/`COUNT(column)` - count resources
 - `SUM(column)` - total costs, sizes, etc.
