@@ -18,6 +18,7 @@ import {
 } from '../types';
 import { PluginManager } from '../plugins/plugin-manager';
 import { logger, logQuery, logQueryResult, logError } from '../utils/logger';
+import { groupRows, applyAggregates, applyAggregatesWithoutGrouping, filterHaving } from '../utils/aggregation';
 
 export class QueryExecutor {
   constructor(private pluginManager: PluginManager) {}
@@ -77,39 +78,72 @@ export class QueryExecutor {
     }
     
     // Execute query through plugin
-    const result = await this.pluginManager.query(
+    let result = await this.pluginManager.query(
       tableInfo.source,
       statement.from,
       filters,
       options
     );
     
-    // Apply column selection
-    if (statement.columns.length > 0 && statement.columns[0].name !== '*') {
-      const selectedColumns = statement.columns.map((col) => col.name);
-      result.rows = result.rows.map((row) => {
-        const newRow: Record<string, any> = {};
-        for (const col of statement.columns) {
-          if (row[col.name] !== undefined) {
-            const key = col.alias || col.name;
-            newRow[key] = row[col.name];
-          }
-        }
-        return newRow;
-      });
-      
-      // Update columns metadata
-      result.columns = result.columns.filter((col) =>
-        selectedColumns.includes(col.name)
-      );
-    }
+    // Check if aggregation is needed
+    const hasAggregates = statement.columns.some((col) => col.aggregate);
     
-    // Apply aliases to column metadata
-    for (const col of statement.columns) {
-      if (col.alias) {
-        const columnMeta = result.columns.find((c) => c.name === col.name);
-        if (columnMeta) {
-          columnMeta.name = col.alias;
+    if (hasAggregates) {
+      // Apply aggregation
+      if (statement.groupBy && statement.groupBy.length > 0) {
+        // GROUP BY aggregation
+        const grouped = groupRows(result.rows, statement.groupBy);
+        result.rows = applyAggregates(grouped, statement.columns, statement.groupBy);
+      } else {
+        // Aggregation without GROUP BY
+        result.rows = applyAggregatesWithoutGrouping(result.rows, statement.columns);
+      }
+      
+      // Apply HAVING filter if present
+      if (statement.having) {
+        result.rows = filterHaving(result.rows, statement.having.conditions);
+      }
+      
+      // Update column metadata for aggregates
+      result.columns = statement.columns.map((col) => {
+        if (col.aggregate) {
+          return {
+            name: col.alias || `${col.aggregate.toLowerCase()}(${col.name})`,
+            type: 'number' as const,
+          };
+        } else {
+          const existingCol = tableInfo.columns.find((c) => c.name === col.name);
+          return existingCol || { name: col.name, type: 'string' as const };
+        }
+      });
+    } else {
+      // Apply column selection (no aggregation)
+      if (statement.columns.length > 0 && statement.columns[0].name !== '*') {
+        const selectedColumns = statement.columns.map((col) => col.name);
+        result.rows = result.rows.map((row) => {
+          const newRow: Record<string, any> = {};
+          for (const col of statement.columns) {
+            if (row[col.name] !== undefined) {
+              const key = col.alias || col.name;
+              newRow[key] = row[col.name];
+            }
+          }
+          return newRow;
+        });
+        
+        // Update columns metadata
+        result.columns = result.columns.filter((col) =>
+          selectedColumns.includes(col.name)
+        );
+      }
+      
+      // Apply aliases to column metadata
+      for (const col of statement.columns) {
+        if (col.alias) {
+          const columnMeta = result.columns.find((c) => c.name === col.name);
+          if (columnMeta) {
+            columnMeta.name = col.alias;
+          }
         }
       }
     }
