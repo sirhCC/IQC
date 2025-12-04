@@ -120,14 +120,14 @@ describe('Integration Tests', () => {
   describe('Complex queries', () => {
     it('should handle multiple WHERE conditions with AND', async () => {
       const parser = new Parser(
-        "SELECT * FROM services WHERE environment = 'production' AND status = 'running'"
+        "SELECT * FROM services WHERE environment = 'production' AND status = 'active'"
       );
       const query = parser.parse();
       const result = await executor.execute(query);
 
       expect((result as any).rows).toHaveLength(2);
       expect((result as any).rows.every((r: any) => r.environment === 'production')).toBe(true);
-      expect((result as any).rows.every((r: any) => r.status === 'running')).toBe(true);
+      expect((result as any).rows.every((r: any) => r.status === 'active')).toBe(true);
     });
 
     it('should handle comparison operators', async () => {
