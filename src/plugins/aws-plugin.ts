@@ -29,6 +29,8 @@ import {
   TraceHop,
   HealthStatus,
 } from '../types';
+import { logger, logPluginAction, logError } from '../utils/logger';
+import { withRetryAndTimeout } from '../utils/retry';
 
 interface AWSPluginConfig extends PluginConfig {
   region?: string;
@@ -77,7 +79,7 @@ export class AWSPlugin implements DataSourcePlugin {
     this.rdsClient = new RDSClient(clientConfig);
     this.lambdaClient = new LambdaClient(clientConfig);
 
-    console.log(`AWS plugin initialized for region: ${this.region}`);
+    logger.info(`AWS plugin initialized`, { region: this.region, profile: config.profile });
   }
 
   async getTables(): Promise<TableInfo[]> {
@@ -194,7 +196,14 @@ export class AWSPlugin implements DataSourcePlugin {
 
   private async queryEC2Instances(): Promise<any[]> {
     const command = new DescribeInstancesCommand({});
-    const response = await this.ec2Client!.send(command);
+    const response = await withRetryAndTimeout(
+      () => this.ec2Client!.send(command),
+      { maxAttempts: 3 },
+      { timeoutMs: 30000 },
+      (error, attempt, delay) => {
+        logger.warn(`EC2 query retry attempt ${attempt}`, { error: error.message, delay });
+      }
+    );
 
     const instances: any[] = [];
     for (const reservation of response.Reservations || []) {
@@ -217,7 +226,14 @@ export class AWSPlugin implements DataSourcePlugin {
 
   private async queryRDSInstances(): Promise<any[]> {
     const command = new DescribeDBInstancesCommand({});
-    const response = await this.rdsClient!.send(command);
+    const response = await withRetryAndTimeout(
+      () => this.rdsClient!.send(command),
+      { maxAttempts: 3 },
+      { timeoutMs: 30000 },
+      (error, attempt, delay) => {
+        logger.warn(`RDS query retry attempt ${attempt}`, { error: error.message, delay });
+      }
+    );
 
     const instances: any[] = [];
     for (const dbInstance of response.DBInstances || []) {
@@ -239,7 +255,14 @@ export class AWSPlugin implements DataSourcePlugin {
 
   private async queryLambdaFunctions(): Promise<any[]> {
     const command = new ListFunctionsCommand({});
-    const response = await this.lambdaClient!.send(command);
+    const response = await withRetryAndTimeout(
+      () => this.lambdaClient!.send(command),
+      { maxAttempts: 3 },
+      { timeoutMs: 30000 },
+      (error, attempt, delay) => {
+        logger.warn(`Lambda query retry attempt ${attempt}`, { error: error.message, delay });
+      }
+    );
 
     const functions: any[] = [];
     for (const func of response.Functions || []) {
