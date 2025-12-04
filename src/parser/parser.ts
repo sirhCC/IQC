@@ -58,6 +58,17 @@ export class Parser {
       where = this.parseWhere();
     }
     
+    let groupBy: string[] | undefined;
+    if (this.match(TokenType.GROUP)) {
+      this.consume(TokenType.BY, 'Expected BY after GROUP');
+      groupBy = this.parseGroupBy();
+    }
+    
+    let having: WhereClause | undefined;
+    if (this.match(TokenType.HAVING)) {
+      having = this.parseWhere();
+    }
+    
     let orderBy: OrderByClause[] | undefined;
     if (this.match(TokenType.ORDER)) {
       this.consume(TokenType.BY, 'Expected BY after ORDER');
@@ -76,7 +87,7 @@ export class Parser {
       offset = parseInt(offsetToken.value);
     }
     
-    return { columns, from, where, orderBy, limit, offset };
+    return { columns, from, where, groupBy, having, orderBy, limit, offset };
   }
   
   private parseColumns(): Column[] {
@@ -87,14 +98,45 @@ export class Parser {
     const columns: Column[] = [];
     
     do {
-      const name = this.consume(TokenType.IDENTIFIER, 'Expected column name').value;
+      let aggregate: 'COUNT' | 'SUM' | 'AVG' | 'MIN' | 'MAX' | undefined;
+      let name: string;
+      
+      // Check for aggregate functions
+      if (this.check(TokenType.COUNT) || this.check(TokenType.SUM) || 
+          this.check(TokenType.AVG) || this.check(TokenType.MIN) || this.check(TokenType.MAX)) {
+        const aggToken = this.advance();
+        aggregate = aggToken.value.toUpperCase() as 'COUNT' | 'SUM' | 'AVG' | 'MIN' | 'MAX';
+        
+        this.consume(TokenType.LPAREN, 'Expected ( after aggregate function');
+        
+        if (this.match(TokenType.STAR)) {
+          name = '*';
+        } else {
+          name = this.consume(TokenType.IDENTIFIER, 'Expected column name or *').value;
+        }
+        
+        this.consume(TokenType.RPAREN, 'Expected ) after aggregate function');
+      } else {
+        name = this.consume(TokenType.IDENTIFIER, 'Expected column name').value;
+      }
       
       let alias: string | undefined;
       if (this.match(TokenType.AS)) {
-        alias = this.consume(TokenType.IDENTIFIER, 'Expected alias name').value;
+        // Allow aggregate keywords as alias names (e.g., "as count")
+        const aliasToken = this.peek();
+        if (aliasToken.type === TokenType.IDENTIFIER ||
+            aliasToken.type === TokenType.COUNT ||
+            aliasToken.type === TokenType.SUM ||
+            aliasToken.type === TokenType.AVG ||
+            aliasToken.type === TokenType.MIN ||
+            aliasToken.type === TokenType.MAX) {
+          alias = this.advance().value.toLowerCase();
+        } else {
+          throw new ParseError(`Expected alias name at line ${aliasToken.line}, column ${aliasToken.column}`, { token: aliasToken });
+        }
       }
       
-      columns.push({ name, alias });
+      columns.push({ name, alias, aggregate });
     } while (this.match(TokenType.COMMA));
     
     return columns;
@@ -105,7 +147,19 @@ export class Parser {
     let operator: 'AND' | 'OR' = 'AND';
     
     do {
-      const field = this.consume(TokenType.IDENTIFIER, 'Expected field name').value;
+      // Allow aggregate keywords as field names (for HAVING clauses referencing aliases)
+      const fieldToken = this.peek();
+      let field: string;
+      if (fieldToken.type === TokenType.IDENTIFIER ||
+          fieldToken.type === TokenType.COUNT ||
+          fieldToken.type === TokenType.SUM ||
+          fieldToken.type === TokenType.AVG ||
+          fieldToken.type === TokenType.MIN ||
+          fieldToken.type === TokenType.MAX) {
+        field = this.advance().value.toLowerCase();
+      } else {
+        throw new ParseError(`Expected field name at line ${fieldToken.line}, column ${fieldToken.column}`, { token: fieldToken });
+      }
       
       let op: string;
       const opToken = this.peek();
@@ -168,6 +222,17 @@ export class Parser {
     } while (true);
     
     return { conditions, operator };
+  }
+  
+  private parseGroupBy(): string[] {
+    const groupBy: string[] = [];
+    
+    do {
+      const field = this.consume(TokenType.IDENTIFIER, 'Expected field name').value;
+      groupBy.push(field);
+    } while (this.match(TokenType.COMMA));
+    
+    return groupBy;
   }
   
   private parseOrderBy(): OrderByClause[] {
