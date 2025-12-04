@@ -11,7 +11,7 @@ import * as path from 'path';
 import chalk from 'chalk';
 import { Parser } from './parser';
 import { QueryExecutor } from './engine';
-import { PluginManager, MockPlugin, AWSPlugin } from './plugins';
+import { PluginManager, MockPlugin, AWSPlugin, KubernetesPlugin, DockerPlugin } from './plugins';
 import { IQLConfig, QueryResult } from './types';
 
 const program = new Command();
@@ -51,24 +51,69 @@ async function registerPlugins(manager: PluginManager, config?: IQLConfig): Prom
   // Always register mock plugin for testing
   await manager.registerPlugin(new MockPlugin());
   
-  // Register AWS plugin if credentials are available
-  const awsRegion = process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION;
-  const awsProfile = process.env.AWS_PROFILE;
+  // Register AWS plugin if credentials are available or configured
+  const awsConfig = config?.plugins?.find(p => p.name === 'aws');
+  const awsRegion = awsConfig?.config?.region || process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION;
+  const awsProfile = awsConfig?.config?.profile || process.env.AWS_PROFILE;
   const hasAwsCreds = process.env.AWS_ACCESS_KEY_ID || awsProfile;
+  const awsEnabled = awsConfig?.enabled !== false; // Default to enabled
   
-  if (hasAwsCreds || awsRegion) {
+  if (awsEnabled && (hasAwsCreds || awsRegion)) {
     try {
       const awsPlugin = new AWSPlugin();
       await manager.registerPlugin(awsPlugin, {
         region: awsRegion,
         profile: awsProfile,
+        ...awsConfig?.config,
       });
       console.log(chalk.green('✓ AWS plugin registered'));
     } catch (error) {
       console.log(chalk.yellow(`⚠ AWS plugin failed to initialize: ${error instanceof Error ? error.message : 'Unknown error'}`));
     }
+  } else if (!awsEnabled) {
+    console.log(chalk.gray('ℹ AWS plugin disabled in config'));
   } else {
     console.log(chalk.gray('ℹ AWS plugin not loaded (no credentials found)'));
+  }
+  
+  // Register Kubernetes plugin if kubeconfig exists or configured
+  const k8sConfig = config?.plugins?.find(p => p.name === 'kubernetes');
+  const k8sEnabled = k8sConfig?.enabled !== false;
+  const kubeconfig = k8sConfig?.config?.kubeconfig || process.env.KUBECONFIG || (process.env.HOME || process.env.USERPROFILE) + '/.kube/config';
+  const kubecontext = k8sConfig?.config?.context || process.env.KUBECONTEXT;
+  
+  if (k8sEnabled && (kubecontext || fs.existsSync(kubeconfig))) {
+    try {
+      const k8sPlugin = new KubernetesPlugin();
+      await manager.registerPlugin(k8sPlugin, {
+        context: kubecontext,
+        namespace: k8sConfig?.config?.namespace || process.env.KUBE_NAMESPACE,
+        kubeconfig: k8sConfig?.config?.kubeconfig || process.env.KUBECONFIG,
+      });
+      console.log(chalk.green('✓ Kubernetes plugin registered (requires @kubernetes/client-node)'));
+    } catch (error) {
+      console.log(chalk.yellow(`⚠ Kubernetes plugin: ${error instanceof Error ? error.message : 'Unknown error'}`));
+    }
+  } else if (!k8sEnabled) {
+    console.log(chalk.gray('ℹ Kubernetes plugin disabled in config'));
+  } else {
+    console.log(chalk.gray('ℹ Kubernetes plugin not loaded (no kubeconfig found)'));
+  }
+  
+  // Register Docker plugin if enabled
+  const dockerConfig = config?.plugins?.find(p => p.name === 'docker');
+  const dockerEnabled = dockerConfig?.enabled !== false;
+  
+  if (dockerEnabled) {
+    try {
+      const dockerPlugin = new DockerPlugin();
+      await manager.registerPlugin(dockerPlugin, dockerConfig?.config);
+      console.log(chalk.green('✓ Docker plugin registered (requires dockerode)'));
+    } catch (error) {
+      console.log(chalk.yellow(`⚠ Docker plugin: ${error instanceof Error ? error.message : 'Unknown error'}`));
+    }
+  } else {
+    console.log(chalk.gray('ℹ Docker plugin disabled in config'));
   }
   
   if (config?.plugins) {
@@ -77,16 +122,33 @@ async function registerPlugins(manager: PluginManager, config?: IQLConfig): Prom
   }
 }
 
-function loadConfig(configPath: string): IQLConfig | undefined {
+export function loadConfig(configPath: string): IQLConfig | undefined {
   try {
-    if (fs.existsSync(configPath)) {
-      // TODO: Parse YAML config
-      console.log(chalk.yellow(`Config file found at ${configPath} but YAML parsing not yet implemented`));
+    if (!fs.existsSync(configPath)) {
+      return undefined;
     }
+
+    const fileContent = fs.readFileSync(configPath, 'utf-8');
+    
+    // Replace environment variables in format ${VAR} or ${VAR:-default}
+    const processed = fileContent.replace(/\$\{([^:}]+)(?::(-)?([^}]*))?\}/g, (match, varName, dash, defaultValue) => {
+      const envValue = process.env[varName];
+      if (envValue !== undefined) {
+        return envValue;
+      }
+      if (defaultValue !== undefined) {
+        return defaultValue;
+      }
+      return match; // Keep original if no env var or default
+    });
+
+    const config = require('yaml').parse(processed) as IQLConfig;
+    console.log(chalk.green(`✓ Loaded config from ${configPath}`));
+    return config;
   } catch (error) {
-    console.error(chalk.red(`Error loading config: ${error}`));
+    console.error(chalk.red(`Error loading config: ${error instanceof Error ? error.message : 'Unknown error'}`));
+    return undefined;
   }
-  return undefined;
 }
 
 async function executeFile(
