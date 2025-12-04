@@ -1,10 +1,33 @@
 # IQL Configuration File
 
-# Plugins to load
+# Plugins configuration
 plugins:
+  # Mock plugin - always available for testing
   - name: mock
     enabled: true
-    description: "Built-in mock data source for testing"
+    
+  # AWS plugin - requires credentials
+  - name: aws
+    enabled: true
+    config:
+      region: ${AWS_REGION:-us-east-1}
+      profile: ${AWS_PROFILE:-default}
+      # accessKeyId: ${AWS_ACCESS_KEY_ID}  # Not recommended, use env vars
+      # secretAccessKey: ${AWS_SECRET_ACCESS_KEY}
+      
+  # Kubernetes plugin - requires kubeconfig
+  - name: kubernetes
+    enabled: false  # Set to true when ready
+    config:
+      context: ${KUBECONTEXT}
+      namespace: ${KUBE_NAMESPACE:-default}
+      kubeconfig: ${KUBECONFIG}
+      
+  # Docker plugin
+  - name: docker
+    enabled: false  # Set to true when dockerode is installed
+    config:
+      socketPath: /var/run/docker.sock
 
 # Output settings
 output:
