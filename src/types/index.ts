@@ -147,15 +147,16 @@ export interface HealthStatus {
 
 // Configuration
 export interface IQLConfig {
-  plugins: PluginDefinition[];
-  output: OutputConfig;
+  plugins?: PluginDefinition[];
+  output?: OutputConfig;
   cache?: CacheConfig;
   performance?: PerformanceConfig;
 }
 
 export interface PluginDefinition {
   name: string;
-  enabled: boolean;
+  enabled?: boolean;
+  path?: string;
   config?: Record<string, any>;
 }
 
