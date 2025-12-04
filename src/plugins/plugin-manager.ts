@@ -13,6 +13,7 @@ import {
   TraceHop,
   HealthStatus,
 } from '../types';
+import { logger, logPluginAction, logError } from '../utils/logger';
 
 export class PluginManager {
   private plugins: Map<string, DataSourcePlugin> = new Map();
@@ -23,13 +24,16 @@ export class PluginManager {
       throw new PluginError(`Plugin '${plugin.name}' is already registered`);
     }
     
+    logPluginAction(plugin.name, 'registering', config);
     this.plugins.set(plugin.name, plugin);
     
     try {
       await plugin.initialize(config || {});
       this.initialized.add(plugin.name);
+      logPluginAction(plugin.name, 'registered');
     } catch (error) {
       this.plugins.delete(plugin.name);
+      logError(error as Error, { plugin: plugin.name, action: 'register' });
       throw new PluginError(
         `Failed to initialize plugin '${plugin.name}': ${error instanceof Error ? error.message : 'Unknown error'}`,
         { plugin: plugin.name, error }
