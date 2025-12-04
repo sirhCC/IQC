@@ -26,10 +26,12 @@ interface MockData {
   deployments: Array<{
     id: string;
     service_id: string;
+    environment: string;
     timestamp: string;
     version: string;
     status: string;
     deployed_by: string;
+    replicas: number;
   }>;
   incidents: Array<{
     id: string;
@@ -53,7 +55,7 @@ export class MockPlugin implements DataSourcePlugin {
         name: 'api-gateway',
         environment: 'production',
         version: '2.3.1',
-        status: 'running',
+        status: 'active',
         cpu_usage: 45.2,
         memory_usage: 1024,
       },
@@ -62,7 +64,7 @@ export class MockPlugin implements DataSourcePlugin {
         name: 'auth-service',
         environment: 'production',
         version: '1.5.0',
-        status: 'running',
+        status: 'active',
         cpu_usage: 23.1,
         memory_usage: 512,
       },
@@ -71,7 +73,7 @@ export class MockPlugin implements DataSourcePlugin {
         name: 'data-processor',
         environment: 'staging',
         version: '3.0.0-beta',
-        status: 'stopped',
+        status: 'degraded',
         cpu_usage: 0,
         memory_usage: 0,
       },
@@ -80,26 +82,32 @@ export class MockPlugin implements DataSourcePlugin {
       {
         id: 'dep-1',
         service_id: 'svc-1',
+        environment: 'production',
         timestamp: '2024-01-15T10:30:00Z',
         version: '2.3.1',
         status: 'success',
         deployed_by: 'user@example.com',
+        replicas: 2,
       },
       {
         id: 'dep-2',
         service_id: 'svc-2',
+        environment: 'production',
         timestamp: '2024-01-14T15:45:00Z',
         version: '1.5.0',
         status: 'success',
         deployed_by: 'ci-bot',
+        replicas: 3,
       },
       {
         id: 'dep-3',
         service_id: 'svc-3',
+        environment: 'staging',
         timestamp: '2024-01-16T09:00:00Z',
         version: '3.0.0-beta',
         status: 'failed',
         deployed_by: 'user@example.com',
+        replicas: 1,
       },
     ],
     incidents: [
