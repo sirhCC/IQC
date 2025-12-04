@@ -7,12 +7,12 @@
 import { Command } from 'commander';
 import * as readline from 'readline';
 import * as fs from 'fs';
-import * as path from 'path';
 import chalk from 'chalk';
 import { Parser } from './parser';
 import { QueryExecutor } from './engine';
 import { PluginManager, MockPlugin, AWSPlugin, KubernetesPlugin, DockerPlugin } from './plugins';
 import { IQLConfig, QueryResult } from './types';
+import { logger } from './utils/logger';
 
 const program = new Command();
 
