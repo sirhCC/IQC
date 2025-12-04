@@ -17,6 +17,7 @@ import {
   QueryOptions,
 } from '../types';
 import { PluginManager } from '../plugins/plugin-manager';
+import { logger, logQuery, logQueryResult, logError } from '../utils/logger';
 
 export class QueryExecutor {
   constructor(private pluginManager: PluginManager) {}
@@ -37,13 +38,19 @@ export class QueryExecutor {
   }
   
   private async executeSelect(statement: SelectStatement): Promise<QueryResult> {
-    // Find which plugin owns this table
-    const allTables = await this.pluginManager.getAllTables();
-    const tableInfo = allTables.find((t) => t.name === statement.from);
+    const startTime = Date.now();
+    const queryStr = `SELECT ${statement.columns.join(', ')} FROM ${statement.from}`;
     
-    if (!tableInfo) {
-      throw new ExecutionError(`Table '${statement.from}' not found in any registered data source`);
-    }
+    try {
+      logQuery(queryStr);
+      
+      // Find which plugin owns this table
+      const allTables = await this.pluginManager.getAllTables();
+      const tableInfo = allTables.find((t) => t.name === statement.from);
+      
+      if (!tableInfo) {
+        throw new ExecutionError(`Table '${statement.from}' not found in any registered data source`);
+      }
     
     // Convert WHERE clause to filters
     const filters: Filter[] = [];
@@ -107,7 +114,13 @@ export class QueryExecutor {
       }
     }
     
+    const duration = Date.now() - startTime;
+    logQueryResult(queryStr, result.rows.length, duration);
     return result;
+    } catch (error) {
+      logError(error as Error, { query: queryStr, table: statement.from });
+      throw error;
+    }
   }
   
   private async executeTrace(statement: TraceStatement): Promise<TraceResult> {
