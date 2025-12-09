@@ -5,11 +5,11 @@
 ## 🔴 Critical Priority (Blockers for Real Use)
 
 ### 1. Implement Real Data Source Plugins
-**Status:** ✅ Partially Complete  
+**Status:** ✅ Complete  
 **Effort:** High  
 **Impact:** Critical
 
-AWS plugin implemented with EC2, RDS, Lambda support. Kubernetes and Docker plugins scaffolded but need npm packages.
+AWS plugin implemented with EC2, RDS, Lambda support. Kubernetes plugin fully implemented with Pods, Deployments, Services, Nodes. Docker plugin fully implemented with Containers, Images, Volumes, Networks.
 
 - **AWS Plugin** (highest demand)
   - EC2 instances (running, stopped, instance types, tags)
@@ -38,11 +38,11 @@ AWS plugin implemented with EC2, RDS, Lambda support. Kubernetes and Docker plug
 ---
 
 ### 2. Add Authentication/Credentials Management
-**Status:** ✅ Partially Complete  
+**Status:** ✅ Complete  
 **Effort:** Medium  
 **Impact:** Critical
 
-AWS credentials working (env vars, profiles, default chain). Need K8s contexts, Docker, credential validation.
+AWS credentials working (env vars, profiles, default chain). Kubernetes kubeconfig and context support implemented. Docker socket path configuration implemented.
 
 - Environment variables (AWS_ACCESS_KEY_ID, etc.)
 - Config file credentials sections
