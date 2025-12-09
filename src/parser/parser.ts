@@ -13,6 +13,7 @@ import {
   WhereClause,
   Condition,
   OrderByClause,
+  JoinClause,
   ParseError,
 } from '../types';
 
@@ -53,6 +54,12 @@ export class Parser {
     this.consume(TokenType.FROM, 'Expected FROM');
     const from = this.consume(TokenType.IDENTIFIER, 'Expected table name').value;
     
+    let joins: JoinClause[] | undefined;
+    if (this.check(TokenType.INNER) || this.check(TokenType.LEFT) || 
+        this.check(TokenType.RIGHT) || this.check(TokenType.JOIN)) {
+      joins = this.parseJoins();
+    }
+    
     let where: WhereClause | undefined;
     if (this.match(TokenType.WHERE)) {
       where = this.parseWhere();
@@ -87,7 +94,7 @@ export class Parser {
       offset = parseInt(offsetToken.value);
     }
     
-    return { columns, from, where, groupBy, having, orderBy, limit, offset };
+    return { columns, from, joins, where, groupBy, having, orderBy, limit, offset };
   }
   
   private parseColumns(): Column[] {
@@ -299,6 +306,56 @@ export class Parser {
     }
     
     return { what };
+  }
+  
+  private parseJoins(): JoinClause[] {
+    const joins: JoinClause[] = [];
+    
+    while (this.check(TokenType.INNER) || this.check(TokenType.LEFT) || 
+           this.check(TokenType.RIGHT) || this.check(TokenType.JOIN)) {
+      let joinType: 'INNER' | 'LEFT' | 'RIGHT' | 'OUTER' = 'INNER';
+      
+      if (this.match(TokenType.INNER)) {
+        this.consume(TokenType.JOIN, 'Expected JOIN after INNER');
+        joinType = 'INNER';
+      } else if (this.match(TokenType.LEFT)) {
+        this.match(TokenType.OUTER); // Optional OUTER keyword
+        this.consume(TokenType.JOIN, 'Expected JOIN after LEFT');
+        joinType = 'LEFT';
+      } else if (this.match(TokenType.RIGHT)) {
+        this.match(TokenType.OUTER); // Optional OUTER keyword
+        this.consume(TokenType.JOIN, 'Expected JOIN after RIGHT');
+        joinType = 'RIGHT';
+      } else {
+        this.consume(TokenType.JOIN, 'Expected JOIN');
+        joinType = 'INNER'; // Default to INNER JOIN
+      }
+      
+      const table = this.consume(TokenType.IDENTIFIER, 'Expected table name after JOIN').value;
+      
+      this.consume(TokenType.ON, 'Expected ON after JOIN table');
+      
+      const leftField = this.consume(TokenType.IDENTIFIER, 'Expected field name after ON').value;
+      
+      let operator: '=' | '!=' | '>' | '<' | '>=' | '<=' = '=';
+      if (this.match(TokenType.EQUALS)) operator = '=';
+      else if (this.match(TokenType.NOT_EQUALS)) operator = '!=';
+      else if (this.match(TokenType.GREATER_EQUAL)) operator = '>=';
+      else if (this.match(TokenType.LESS_EQUAL)) operator = '<=';
+      else if (this.match(TokenType.GREATER)) operator = '>';
+      else if (this.match(TokenType.LESS)) operator = '<';
+      else throw new ParseError('Expected comparison operator in JOIN ON clause', { token: this.peek() });
+      
+      const rightField = this.consume(TokenType.IDENTIFIER, 'Expected field name after operator').value;
+      
+      joins.push({
+        type: joinType,
+        table,
+        on: { leftField, operator, rightField },
+      });
+    }
+    
+    return joins;
   }
   
   private parseValue(token: Token): any {

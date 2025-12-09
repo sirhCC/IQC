@@ -85,6 +85,13 @@ export class QueryExecutor {
       options
     );
     
+    // Execute JOINs if present
+    if (statement.joins && statement.joins.length > 0) {
+      for (const join of statement.joins) {
+        result = await this.executeJoin(result, join, statement.from);
+      }
+    }
+    
     // Check if aggregation is needed
     const hasAggregates = statement.columns.some((col) => col.aggregate);
     

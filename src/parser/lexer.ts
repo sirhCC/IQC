@@ -32,6 +32,12 @@ export enum TokenType {
   AVG = 'AVG',
   MIN = 'MIN',
   MAX = 'MAX',
+  JOIN = 'JOIN',
+  INNER = 'INNER',
+  LEFT = 'LEFT',
+  RIGHT = 'RIGHT',
+  OUTER = 'OUTER',
+  ON = 'ON',
   
   // Operators
   EQUALS = '=',
@@ -101,6 +107,12 @@ export class Lexer {
     ['AVG', TokenType.AVG],
     ['MIN', TokenType.MIN],
     ['MAX', TokenType.MAX],
+    ['JOIN', TokenType.JOIN],
+    ['INNER', TokenType.INNER],
+    ['LEFT', TokenType.LEFT],
+    ['RIGHT', TokenType.RIGHT],
+    ['OUTER', TokenType.OUTER],
+    ['ON', TokenType.ON],
     ['TRUE', TokenType.BOOLEAN],
     ['FALSE', TokenType.BOOLEAN],
   ]);

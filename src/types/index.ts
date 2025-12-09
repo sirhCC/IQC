@@ -11,6 +11,7 @@ export interface Query {
 export interface SelectStatement {
   columns: Column[];
   from: string;
+  joins?: JoinClause[];
   where?: WhereClause;
   groupBy?: string[];
   having?: WhereClause;
@@ -54,6 +55,18 @@ export interface Condition {
 export interface OrderByClause {
   field: string;
   direction: 'ASC' | 'DESC';
+}
+
+export interface JoinClause {
+  type: 'INNER' | 'LEFT' | 'RIGHT' | 'OUTER';
+  table: string;
+  on: JoinCondition;
+}
+
+export interface JoinCondition {
+  leftField: string;
+  operator: '=' | '!=' | '>' | '<' | '>=' | '<=';
+  rightField: string;
 }
 
 // Data types
