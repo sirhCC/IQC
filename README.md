@@ -8,13 +8,15 @@ IQL (Infrastructure Query Language) is a powerful CLI tool that lets you query y
 
 ## ✨ Features
 
-- 🔍 **SQL-Like Syntax** - Familiar SELECT, WHERE, ORDER BY, and more
+- 🔍 **SQL-Like Syntax** - Familiar SELECT, WHERE, ORDER BY, JOIN, and more
 - 🔌 **Plugin Architecture** - Extensible data source system
 - 🌐 **Multi-Source Queries** - Query across different infrastructure providers
+- 🔗 **JOIN Operations** - Correlate data across tables (INNER, LEFT, RIGHT)
 - 🔗 **Trace Operations** - Follow resources across your entire stack
 - 📊 **Multiple Output Formats** - Table, JSON, CSV, YAML
 - ⚡ **Interactive REPL** - Explore your infrastructure interactively
 - 🎯 **Type-Safe** - Built with TypeScript for reliability
+- 🛡️ **Smart Limits** - Automatic result truncation with helpful warnings (10K row default)
 
 ## 📦 Installation
 
@@ -70,13 +72,60 @@ SELECT name, status FROM services WHERE environment = 'production'
 SELECT * FROM deployments WHERE timestamp > '2024-01-01' AND status = 'success'
 
 -- With sorting and pagination
-SELECT * FROM incidents 
-WHERE severity = 'critical' 
-ORDER BY created_at DESC 
+SELECT * FROM incidents
+WHERE severity = 'critical'
+ORDER BY created_at DESC
 LIMIT 10
 
 -- Column aliases
 SELECT name AS service_name, status AS health FROM services
+
+-- JOIN tables
+SELECT services.name, deployments.version
+FROM services
+INNER JOIN deployments ON services.id = deployments.service_id
+WHERE services.environment = 'production'
+```
+
+### JOIN - Correlate Data Across Tables
+
+Combine data from multiple tables:
+
+```sql
+-- INNER JOIN: Only matching rows
+SELECT services.name, deployments.version, deployments.timestamp
+FROM services
+INNER JOIN deployments ON services.id = deployments.service_id
+
+-- LEFT JOIN: All left table rows, matching right or NULL
+SELECT services.name, deployments.version
+FROM services
+LEFT JOIN deployments ON services.id = deployments.service_id
+
+-- RIGHT JOIN: All right table rows, matching left or NULL
+SELECT services.name, deployments.version
+FROM services
+RIGHT JOIN deployments ON services.id = deployments.service_id
+
+-- Multiple JOINs
+SELECT services.name, deployments.version, incidents.severity
+FROM services
+INNER JOIN deployments ON services.id = deployments.service_id
+LEFT JOIN incidents ON services.id = incidents.service_id
+WHERE incidents.status = 'open'
+```
+
+### Aggregation Functions
+
+```sql
+-- Count resources
+SELECT COUNT(*) FROM services WHERE environment = 'production'
+
+-- Group and aggregate
+SELECT environment, COUNT(*) as count, AVG(cpu_usage) as avg_cpu
+FROM services
+GROUP BY environment
+HAVING avg_cpu > 50
 ```
 
 ### Supported Operators
@@ -132,11 +181,11 @@ export class MyPlugin implements DataSourcePlugin {
   name = 'my-plugin';
   version = '1.0.0';
   description = 'My custom data source';
-  
+
   async initialize(config: PluginConfig): Promise<void> {
     // Connect to your data source
   }
-  
+
   async getTables(): Promise<TableInfo[]> {
     // Return available tables
     return [
@@ -144,25 +193,21 @@ export class MyPlugin implements DataSourcePlugin {
         name: 'my_table',
         columns: [
           { name: 'id', type: 'string' },
-          { name: 'value', type: 'number' }
-        ]
-      }
+          { name: 'value', type: 'number' },
+        ],
+      },
     ];
   }
-  
-  async query(
-    tableName: string,
-    filters: Filter[],
-    options?: QueryOptions
-  ): Promise<QueryResult> {
+
+  async query(tableName: string, filters: Filter[], options?: QueryOptions): Promise<QueryResult> {
     // Execute query and return results
   }
-  
+
   async trace(identifier: string, value: string): Promise<TraceHop[]> {
     // Optional: Implement tracing
     return [];
   }
-  
+
   async healthCheck(): Promise<HealthStatus> {
     return { healthy: true };
   }
@@ -180,7 +225,7 @@ plugins:
     config:
       region: us-east-1
       profile: default
-      
+
   - name: kubernetes
     path: ./plugins/k8s-plugin
     config:
@@ -284,8 +329,8 @@ Want to create a plugin for your favorite service? Check out the [Plugin Develop
 ### Query AWS EC2 Instances
 
 ```sql
-SELECT instance_id, state, instance_type 
-FROM ec2_instances 
+SELECT instance_id, state, instance_type
+FROM ec2_instances
 WHERE state = 'running' AND tags.environment = 'production'
 ```
 
@@ -334,6 +379,7 @@ MIT License - see [LICENSE](LICENSE) for details.
 ## 🙏 Acknowledgments
 
 Built to unify DevOps tooling inspired by:
+
 - SQL's simplicity and power
 - The pain of juggling multiple infrastructure tools
 - The need for a single pane of glass across clouds and services
