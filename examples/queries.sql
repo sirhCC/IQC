@@ -81,6 +81,76 @@ SHOW TABLES;
 SHOW PLUGINS;
 ```
 
+## JOIN Queries
+
+### Services with their deployments (INNER JOIN)
+```sql
+SELECT 
+  services.name,
+  services.version,
+  deployments.deployed_by,
+  deployments.timestamp
+FROM services
+INNER JOIN deployments ON services.id = deployments.service_id
+WHERE services.environment = 'production'
+ORDER BY deployments.timestamp DESC;
+```
+
+### All services with their deployments if any (LEFT JOIN)
+```sql
+SELECT 
+  services.name,
+  services.status,
+  deployments.version,
+  deployments.timestamp
+FROM services
+LEFT JOIN deployments ON services.id = deployments.service_id
+ORDER BY services.name;
+```
+
+### Services with incidents (correlation analysis)
+```sql
+SELECT 
+  services.name,
+  services.environment,
+  incidents.severity,
+  incidents.description,
+  incidents.created_at
+FROM services
+INNER JOIN incidents ON services.id = incidents.service_id
+WHERE incidents.status = 'open'
+ORDER BY incidents.severity DESC, incidents.created_at DESC;
+```
+
+### Multiple JOINs - Full service correlation
+```sql
+SELECT 
+  services.name,
+  services.cpu_usage,
+  deployments.version,
+  deployments.timestamp AS last_deployed,
+  incidents.severity,
+  incidents.status AS incident_status
+FROM services
+INNER JOIN deployments ON services.id = deployments.service_id
+LEFT JOIN incidents ON services.id = incidents.service_id
+WHERE services.environment = 'production'
+ORDER BY services.name, deployments.timestamp DESC;
+```
+
+### Find services with failed deployments
+```sql
+SELECT 
+  services.name,
+  services.environment,
+  deployments.version,
+  deployments.deployed_by
+FROM services
+INNER JOIN deployments ON services.id = deployments.service_id
+WHERE deployments.status = 'failed'
+ORDER BY deployments.timestamp DESC;
+```
+
 ## Advanced Queries
 
 ### Services with aliases

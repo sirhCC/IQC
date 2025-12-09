@@ -4,8 +4,8 @@
 
 // Query AST types
 export interface Query {
-  type: 'SELECT' | 'TRACE' | 'DESCRIBE' | 'SHOW';
-  statement: SelectStatement | TraceStatement | DescribeStatement | ShowStatement;
+  type: 'SELECT' | 'TRACE' | 'DESCRIBE' | 'SHOW' | 'CACHE';
+  statement: SelectStatement | TraceStatement | DescribeStatement | ShowStatement | CacheStatement;
 }
 
 export interface SelectStatement {
@@ -32,6 +32,12 @@ export interface DescribeStatement {
 
 export interface ShowStatement {
   what: 'TABLES' | 'PLUGINS' | 'SOURCES';
+}
+
+export interface CacheStatement {
+  action: 'SHOW' | 'CLEAR' | 'SET_TTL';
+  table?: string;
+  ttl?: number;
 }
 
 export interface Column {
@@ -79,6 +85,8 @@ export interface QueryResult {
   totalCount: number;
   executionTime?: number;
   source?: string;
+  truncated?: boolean;
+  warning?: string;
 }
 
 export interface TraceResult {
@@ -108,15 +116,43 @@ export interface ShowResult {
   items: any[];
 }
 
+export interface CacheResult {
+  action: string;
+  stats?: {
+    totalEntries: number;
+    totalHits: number;
+    totalMisses: number;
+    hitRate: number;
+    entries: Array<{
+      key: string;
+      size: number;
+      hits: number;
+      age: number;
+      ttl: number;
+    }>;
+  };
+  message?: string;
+}
+
+export interface ShowResult {
+  what: 'TABLES' | 'PLUGINS' | 'SOURCES';
+  items: any[];
+}
+
 // Plugin system
 export interface DataSourcePlugin {
   name: string;
   version: string;
   description?: string;
-  
+
   initialize(config: PluginConfig): Promise<void>;
   getTables(): Promise<TableInfo[]>;
   query(tableName: string, filters: Filter[], options?: QueryOptions): Promise<QueryResult>;
+  queryStream?(
+    tableName: string,
+    filters: Filter[],
+    options?: QueryOptions
+  ): AsyncIterableIterator<Row>;
   trace?(identifier: string, value: string): Promise<TraceHop[]>;
   healthCheck?(): Promise<HealthStatus>;
   cleanup?(): Promise<void>;
@@ -148,6 +184,12 @@ export interface QueryOptions {
   offset?: number;
   orderBy?: OrderByClause[];
   columns?: string[];
+  stream?: boolean;
+  onProgress?: (current: number, total?: number) => void;
+  signal?: AbortSignal;
+  maxResults?: number;
+  useCache?: boolean;
+  cacheTTL?: number;
 }
 
 export interface PluginConfig {
@@ -185,6 +227,7 @@ export interface CacheConfig {
   enabled: boolean;
   ttl: number;
   maxSize: number;
+  tableTTLs?: Record<string, number>;
 }
 
 export interface PerformanceConfig {

@@ -16,10 +16,7 @@ import { logger } from './utils/logger';
 
 const program = new Command();
 
-program
-  .name('iql')
-  .description('Infrastructure Query Language - SQL for DevOps')
-  .version('1.0.0');
+program.name('iql').description('Infrastructure Query Language - SQL for DevOps').version('1.0.0');
 
 program
   .option('-f, --file <path>', 'Execute queries from file')
@@ -28,13 +25,13 @@ program
   .action(async (options) => {
     const pluginManager = new PluginManager();
     const executor = new QueryExecutor(pluginManager);
-    
+
     // Load config if exists
     const config = loadConfig(options.config);
-    
+
     // Register plugins
     await registerPlugins(pluginManager, config);
-    
+
     if (options.file) {
       // Execute from file
       await executeFile(options.file, executor, options.output);
@@ -42,7 +39,7 @@ program
       // Start REPL
       await startRepl(executor, pluginManager, options.output);
     }
-    
+
     // Cleanup
     await pluginManager.cleanup();
   });
@@ -50,14 +47,15 @@ program
 async function registerPlugins(manager: PluginManager, config?: IQLConfig): Promise<void> {
   // Always register mock plugin for testing
   await manager.registerPlugin(new MockPlugin());
-  
+
   // Register AWS plugin if credentials are available or configured
-  const awsConfig = config?.plugins?.find(p => p.name === 'aws');
-  const awsRegion = awsConfig?.config?.region || process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION;
+  const awsConfig = config?.plugins?.find((p) => p.name === 'aws');
+  const awsRegion =
+    awsConfig?.config?.region || process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION;
   const awsProfile = awsConfig?.config?.profile || process.env.AWS_PROFILE;
   const hasAwsCreds = process.env.AWS_ACCESS_KEY_ID || awsProfile;
   const awsEnabled = awsConfig?.enabled !== false; // Default to enabled
-  
+
   if (awsEnabled && (hasAwsCreds || awsRegion)) {
     try {
       const awsPlugin = new AWSPlugin();
@@ -68,20 +66,27 @@ async function registerPlugins(manager: PluginManager, config?: IQLConfig): Prom
       });
       console.log(chalk.green('✓ AWS plugin registered'));
     } catch (error) {
-      console.log(chalk.yellow(`⚠ AWS plugin failed to initialize: ${error instanceof Error ? error.message : 'Unknown error'}`));
+      console.log(
+        chalk.yellow(
+          `⚠ AWS plugin failed to initialize: ${error instanceof Error ? error.message : 'Unknown error'}`
+        )
+      );
     }
   } else if (!awsEnabled) {
     console.log(chalk.gray('ℹ AWS plugin disabled in config'));
   } else {
     console.log(chalk.gray('ℹ AWS plugin not loaded (no credentials found)'));
   }
-  
+
   // Register Kubernetes plugin if kubeconfig exists or configured
-  const k8sConfig = config?.plugins?.find(p => p.name === 'kubernetes');
+  const k8sConfig = config?.plugins?.find((p) => p.name === 'kubernetes');
   const k8sEnabled = k8sConfig?.enabled !== false;
-  const kubeconfig = k8sConfig?.config?.kubeconfig || process.env.KUBECONFIG || (process.env.HOME || process.env.USERPROFILE) + '/.kube/config';
+  const kubeconfig =
+    k8sConfig?.config?.kubeconfig ||
+    process.env.KUBECONFIG ||
+    (process.env.HOME || process.env.USERPROFILE) + '/.kube/config';
   const kubecontext = k8sConfig?.config?.context || process.env.KUBECONTEXT;
-  
+
   if (k8sEnabled && (kubecontext || fs.existsSync(kubeconfig))) {
     try {
       const k8sPlugin = new KubernetesPlugin();
@@ -92,30 +97,36 @@ async function registerPlugins(manager: PluginManager, config?: IQLConfig): Prom
       });
       console.log(chalk.green('✓ Kubernetes plugin registered (requires @kubernetes/client-node)'));
     } catch (error) {
-      console.log(chalk.yellow(`⚠ Kubernetes plugin: ${error instanceof Error ? error.message : 'Unknown error'}`));
+      console.log(
+        chalk.yellow(
+          `⚠ Kubernetes plugin: ${error instanceof Error ? error.message : 'Unknown error'}`
+        )
+      );
     }
   } else if (!k8sEnabled) {
     console.log(chalk.gray('ℹ Kubernetes plugin disabled in config'));
   } else {
     console.log(chalk.gray('ℹ Kubernetes plugin not loaded (no kubeconfig found)'));
   }
-  
+
   // Register Docker plugin if enabled
-  const dockerConfig = config?.plugins?.find(p => p.name === 'docker');
+  const dockerConfig = config?.plugins?.find((p) => p.name === 'docker');
   const dockerEnabled = dockerConfig?.enabled !== false;
-  
+
   if (dockerEnabled) {
     try {
       const dockerPlugin = new DockerPlugin();
       await manager.registerPlugin(dockerPlugin, dockerConfig?.config);
       console.log(chalk.green('✓ Docker plugin registered (requires dockerode)'));
     } catch (error) {
-      console.log(chalk.yellow(`⚠ Docker plugin: ${error instanceof Error ? error.message : 'Unknown error'}`));
+      console.log(
+        chalk.yellow(`⚠ Docker plugin: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      );
     }
   } else {
     console.log(chalk.gray('ℹ Docker plugin disabled in config'));
   }
-  
+
   if (config?.plugins) {
     console.log(chalk.yellow('Custom plugin loading from config not yet implemented'));
     // TODO: Load custom plugins from config
@@ -129,24 +140,29 @@ export function loadConfig(configPath: string): IQLConfig | undefined {
     }
 
     const fileContent = fs.readFileSync(configPath, 'utf-8');
-    
+
     // Replace environment variables in format ${VAR} or ${VAR:-default}
-    const processed = fileContent.replace(/\$\{([^:}]+)(?::(-)?([^}]*))?\}/g, (match, varName, dash, defaultValue) => {
-      const envValue = process.env[varName];
-      if (envValue !== undefined) {
-        return envValue;
+    const processed = fileContent.replace(
+      /\$\{([^:}]+)(?::(-)?([^}]*))?\}/g,
+      (match, varName, dash, defaultValue) => {
+        const envValue = process.env[varName];
+        if (envValue !== undefined) {
+          return envValue;
+        }
+        if (defaultValue !== undefined) {
+          return defaultValue;
+        }
+        return match; // Keep original if no env var or default
       }
-      if (defaultValue !== undefined) {
-        return defaultValue;
-      }
-      return match; // Keep original if no env var or default
-    });
+    );
 
     const config = require('yaml').parse(processed) as IQLConfig;
     console.log(chalk.green(`✓ Loaded config from ${configPath}`));
     return config;
   } catch (error) {
-    console.error(chalk.red(`Error loading config: ${error instanceof Error ? error.message : 'Unknown error'}`));
+    console.error(
+      chalk.red(`Error loading config: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    );
     return undefined;
   }
 }
@@ -159,10 +175,10 @@ async function executeFile(
   try {
     const content = fs.readFileSync(filePath, 'utf-8');
     const queries = content.split(';').filter((q) => q.trim());
-    
+
     for (const queryText of queries) {
       if (!queryText.trim()) continue;
-      
+
       console.log(chalk.cyan(`\nExecuting: ${queryText.trim()}`));
       await executeQuery(queryText, executor, outputFormat);
     }
@@ -181,76 +197,92 @@ async function startRepl(
   console.log(chalk.bold.cyan('║  Infrastructure Query Language (IQL) - Interactive Shell ║'));
   console.log(chalk.bold.cyan('╚══════════════════════════════════════════════════════════╝\n'));
   console.log(chalk.gray('Type your queries or commands:'));
-  console.log(chalk.gray('  .help    - Show help'));
-  console.log(chalk.gray('  .tables  - List all tables'));
-  console.log(chalk.gray('  .plugins - List all plugins'));
-  console.log(chalk.gray('  .health  - Check plugin health'));
-  console.log(chalk.gray('  .exit    - Exit shell\n'));
-  
+  console.log(chalk.gray('  .help       - Show help'));
+  console.log(chalk.gray('  .tables     - List all tables'));
+  console.log(chalk.gray('  .plugins    - List all plugins'));
+  console.log(chalk.gray('  .health     - Check plugin health'));
+  console.log(chalk.gray('  .cache      - Show cache stats'));
+  console.log(chalk.gray('  .clearcache - Clear cache'));
+  console.log(chalk.gray('  .exit       - Exit shell\n'));
+
   const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout,
     prompt: chalk.green('iql> '),
   });
-  
+
   rl.prompt();
-  
+
   rl.on('line', async (line) => {
     const input = line.trim();
-    
+
     if (!input) {
       rl.prompt();
       return;
     }
-    
+
     // Handle special commands
     if (input.startsWith('.')) {
-      await handleCommand(input, pluginManager);
+      await handleCommand(input, pluginManager, executor, outputFormat);
       rl.prompt();
       return;
     }
-    
+
     // Execute query
     try {
       await executeQuery(input, executor, outputFormat);
     } catch (error) {
-      console.error(chalk.red(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`));
+      console.error(
+        chalk.red(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      );
     }
-    
+
     rl.prompt();
   });
-  
+
   rl.on('close', () => {
     console.log(chalk.cyan('\nGoodbye!'));
     process.exit(0);
   });
 }
 
-async function handleCommand(command: string, pluginManager: PluginManager): Promise<void> {
+async function handleCommand(
+  command: string,
+  pluginManager: PluginManager,
+  executor: QueryExecutor,
+  outputFormat: string
+): Promise<void> {
   switch (command) {
     case '.help':
       console.log(chalk.bold('\nAvailable Commands:'));
-      console.log('  .help    - Show this help message');
-      console.log('  .tables  - List all available tables');
-      console.log('  .plugins - List all registered plugins');
-      console.log('  .health  - Check health of all plugins');
-      console.log('  .exit    - Exit the shell');
+      console.log('  .help       - Show this help message');
+      console.log('  .tables     - List all available tables');
+      console.log('  .plugins    - List all registered plugins');
+      console.log('  .health     - Check health of all plugins');
+      console.log('  .cache      - Show cache statistics');
+      console.log('  .clearcache - Clear all cache entries');
+      console.log('  .exit       - Exit the shell');
       console.log(chalk.bold('\nQuery Examples:'));
-      console.log('  SELECT * FROM services WHERE environment = \'production\'');
+      console.log("  SELECT * FROM services WHERE environment = 'production'");
       console.log('  SELECT name, status FROM services WHERE cpu_usage > 50');
-      console.log('  TRACE service_id = \'svc-1\' THROUGH mock');
+      console.log("  TRACE service_id = 'svc-1' THROUGH mock");
       console.log('  DESCRIBE services');
       console.log('  SHOW TABLES');
+      console.log('  SHOW CACHE');
+      console.log('  CLEAR CACHE');
+      console.log('  SET CACHE TTL services = 60000');
       break;
-      
+
     case '.tables':
       const tables = await pluginManager.getAllTables();
       console.log(chalk.bold('\nAvailable Tables:'));
       tables.forEach((table) => {
-        console.log(`  ${chalk.cyan(table.name)} (${table.source}) - ${table.columns.length} columns`);
+        console.log(
+          `  ${chalk.cyan(table.name)} (${table.source}) - ${table.columns.length} columns`
+        );
       });
       break;
-      
+
     case '.plugins':
       const plugins = pluginManager.listPlugins();
       console.log(chalk.bold('\nRegistered Plugins:'));
@@ -261,7 +293,7 @@ async function handleCommand(command: string, pluginManager: PluginManager): Pro
         }
       });
       break;
-      
+
     case '.health':
       const health = await pluginManager.healthCheck();
       console.log(chalk.bold('\nPlugin Health Status:'));
@@ -270,11 +302,19 @@ async function handleCommand(command: string, pluginManager: PluginManager): Pro
         console.log(`  ${icon} ${name}: ${status.message || 'OK'}`);
       });
       break;
-      
+
+    case '.cache':
+      await executeQuery('SHOW CACHE', executor, outputFormat);
+      break;
+
+    case '.clearcache':
+      await executeQuery('CLEAR CACHE', executor, outputFormat);
+      break;
+
     case '.exit':
       process.exit(0);
       break;
-      
+
     default:
       console.log(chalk.red(`Unknown command: ${command}`));
       console.log(chalk.gray('Type .help for available commands'));
@@ -290,7 +330,7 @@ async function executeQuery(
     const parser = new Parser(queryText);
     const query = parser.parse();
     const result = await executor.execute(query);
-    
+
     formatOutput(result, outputFormat);
   } catch (error) {
     console.error(chalk.red(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`));
@@ -305,22 +345,20 @@ function formatOutput(result: any, format: string): void {
     case 'json':
       console.log(JSON.stringify(result, null, 2));
       break;
-      
+
     case 'csv':
       if (result.rows && result.columns) {
         // Header
         console.log(result.columns.map((c: any) => c.name).join(','));
         // Rows
         result.rows.forEach((row: any) => {
-          console.log(
-            result.columns.map((c: any) => JSON.stringify(row[c.name] ?? '')).join(',')
-          );
+          console.log(result.columns.map((c: any) => JSON.stringify(row[c.name] ?? '')).join(','));
         });
       } else {
         console.log(JSON.stringify(result));
       }
       break;
-      
+
     case 'table':
     default:
       if (result.rows && result.columns) {
@@ -346,6 +384,28 @@ function formatOutput(result: any, format: string): void {
         result.columns.forEach((col: any) => {
           console.log(`  ${chalk.cyan(col.name)}: ${col.type}`);
         });
+      } else if (result.action) {
+        // CACHE results
+        if (result.message) {
+          console.log(chalk.green(`\n${result.message}`));
+        }
+        if (result.stats) {
+          console.log(chalk.bold('\nCache Statistics:'));
+          console.log(`  Total Entries: ${result.stats.totalEntries}`);
+          console.log(`  Total Hits: ${result.stats.totalHits}`);
+          console.log(`  Total Misses: ${result.stats.totalMisses}`);
+          console.log(`  Hit Rate: ${result.stats.hitRate}%`);
+          if (result.stats.entries.length > 0) {
+            console.log(chalk.bold('\nCache Entries:'));
+            result.stats.entries.forEach((entry: any) => {
+              const ageSeconds = Math.round(entry.age / 1000);
+              const ttlSeconds = Math.round(entry.ttl / 1000);
+              console.log(
+                `  ${entry.key.substring(0, 50)}... (${entry.hits} hits, ${ageSeconds}s old, TTL: ${ttlSeconds}s)`
+              );
+            });
+          }
+        }
       } else {
         console.log(result);
       }
@@ -358,36 +418,35 @@ function printTable(result: QueryResult): void {
     console.log(chalk.yellow('\nNo results found.'));
     return;
   }
-  
+
   const columnNames = result.columns.map((c) => c.name);
   const columnWidths = columnNames.map((name, idx) => {
-    const maxDataWidth = Math.max(
-      ...result.rows.map((row) => String(row[name] ?? '').length)
-    );
+    const maxDataWidth = Math.max(...result.rows.map((row) => String(row[name] ?? '').length));
     return Math.max(name.length, maxDataWidth, 3);
   });
-  
+
   // Header
   console.log();
   console.log(
-    columnNames
-      .map((name, idx) => chalk.bold(name.padEnd(columnWidths[idx])))
-      .join(' │ ')
+    columnNames.map((name, idx) => chalk.bold(name.padEnd(columnWidths[idx]))).join(' │ ')
   );
   console.log(columnWidths.map((w) => '─'.repeat(w)).join('─┼─'));
-  
+
   // Rows
   result.rows.forEach((row) => {
     console.log(
-      columnNames
-        .map((name, idx) => String(row[name] ?? '').padEnd(columnWidths[idx]))
-        .join(' │ ')
+      columnNames.map((name, idx) => String(row[name] ?? '').padEnd(columnWidths[idx])).join(' │ ')
     );
   });
-  
+
   console.log(chalk.gray(`\n${result.rowCount} row(s) returned`));
   if (result.totalCount !== result.rowCount) {
     console.log(chalk.gray(`${result.totalCount} total row(s) in table`));
+  }
+
+  // Display warnings if results were truncated
+  if (result.truncated && result.warning) {
+    console.log(chalk.yellow(`\n⚠ ${result.warning}`));
   }
 }
 
