@@ -372,8 +372,235 @@ export class KubernetesPlugin implements DataSourcePlugin {
   }
 
   async trace(identifier: string, value: string): Promise<TraceHop[]> {
-    // TODO: Implement pod trace (e.g., follow a pod through events)
-    return [];
+    if (!this.coreApi || !this.appsApi) {
+      throw new Error('Kubernetes plugin not initialized');
+    }
+
+    const hops: TraceHop[] = [];
+
+    try {
+      // Trace by pod name
+      if (identifier === 'pod' || identifier === 'pod_name') {
+        const podsResponse = await withRetryAndTimeout(() =>
+          this.coreApi!.listPodForAllNamespaces()
+        );
+        const pod = podsResponse.body.items.find((p) => p.metadata?.name === value);
+
+        if (pod) {
+          // Add pod hop
+          hops.push({
+            source: this.name,
+            table: 'k8s_pods',
+            timestamp: pod.metadata?.creationTimestamp?.toISOString() || new Date().toISOString(),
+            data: {
+              name: pod.metadata?.name,
+              namespace: pod.metadata?.namespace,
+              status: pod.status?.phase,
+              node: pod.spec?.nodeName,
+              ip: pod.status?.podIP,
+              restarts: pod.status?.containerStatuses?.reduce(
+                (sum, c) => sum + c.restartCount,
+                0
+              ) || 0,
+            },
+          });
+
+          // Find owner deployment
+          const ownerRef = pod.metadata?.ownerReferences?.[0];
+          if (ownerRef && ownerRef.kind === 'ReplicaSet') {
+            const deploymentsResponse = await withRetryAndTimeout(() =>
+              this.appsApi!.listDeploymentForAllNamespaces()
+            );
+            const deployment = deploymentsResponse.body.items.find((d) => 
+              d.metadata?.namespace === pod.metadata?.namespace &&
+              ownerRef.name?.startsWith(d.metadata?.name || '')
+            );
+
+            if (deployment) {
+              hops.push({
+                source: this.name,
+                table: 'k8s_deployments',
+                timestamp: deployment.metadata?.creationTimestamp?.toISOString() || new Date().toISOString(),
+                data: {
+                  name: deployment.metadata?.name,
+                  namespace: deployment.metadata?.namespace,
+                  replicas: deployment.spec?.replicas,
+                  available: deployment.status?.availableReplicas,
+                  image: deployment.spec?.template?.spec?.containers?.[0]?.image,
+                },
+              });
+            }
+          }
+
+          // Find services selecting this pod
+          const servicesResponse = await withRetryAndTimeout(() =>
+            this.coreApi!.listServiceForAllNamespaces()
+          );
+          const services = servicesResponse.body.items.filter((s) => {
+            if (s.metadata?.namespace !== pod.metadata?.namespace) return false;
+            const selector = s.spec?.selector;
+            if (!selector) return false;
+            // Check if pod labels match service selector
+            const podLabels = pod.metadata?.labels || {};
+            return Object.entries(selector).every(([key, val]) => podLabels[key] === val);
+          });
+
+          for (const service of services) {
+            hops.push({
+              source: this.name,
+              table: 'k8s_services',
+              timestamp: service.metadata?.creationTimestamp?.toISOString() || new Date().toISOString(),
+              data: {
+                name: service.metadata?.name,
+                namespace: service.metadata?.namespace,
+                type: service.spec?.type,
+                cluster_ip: service.spec?.clusterIP,
+                ports: service.spec?.ports?.map((p) => p.port).join(','),
+              },
+            });
+          }
+
+          // Get pod events
+          try {
+            const eventsResponse = await withRetryAndTimeout(() =>
+              this.coreApi!.listNamespacedEvent(
+                pod.metadata?.namespace || 'default',
+                undefined,
+                undefined,
+                undefined,
+                `involvedObject.name=${pod.metadata?.name}`
+              )
+            );
+
+            for (const event of eventsResponse.body.items) {
+              hops.push({
+                source: this.name,
+                table: 'k8s_events',
+                timestamp: event.lastTimestamp?.toISOString() || 
+                          event.metadata?.creationTimestamp?.toISOString() || 
+                          new Date().toISOString(),
+                data: {
+                  type: event.type,
+                  reason: event.reason,
+                  message: event.message,
+                  count: event.count,
+                },
+              });
+            }
+          } catch (error) {
+            // Events might not be available, continue without them
+            logger.debug('Could not fetch pod events', { pod: pod.metadata?.name, error });
+          }
+        }
+      }
+
+      // Trace by deployment
+      if (identifier === 'deployment' || identifier === 'deployment_name') {
+        const deploymentsResponse = await withRetryAndTimeout(() =>
+          this.appsApi!.listDeploymentForAllNamespaces()
+        );
+        const deployment = deploymentsResponse.body.items.find((d) => d.metadata?.name === value);
+
+        if (deployment) {
+          hops.push({
+            source: this.name,
+            table: 'k8s_deployments',
+            timestamp: deployment.metadata?.creationTimestamp?.toISOString() || new Date().toISOString(),
+            data: {
+              name: deployment.metadata?.name,
+              namespace: deployment.metadata?.namespace,
+              replicas: deployment.spec?.replicas,
+              available: deployment.status?.availableReplicas,
+              image: deployment.spec?.template?.spec?.containers?.[0]?.image,
+            },
+          });
+
+          // Find pods owned by this deployment
+          const podsResponse = await withRetryAndTimeout(() =>
+            this.coreApi!.listNamespacedPod(deployment.metadata?.namespace || 'default')
+          );
+          const pods = podsResponse.body.items.filter((p) => {
+            const ownerRef = p.metadata?.ownerReferences?.[0];
+            return ownerRef && ownerRef.name?.startsWith(deployment.metadata?.name || '');
+          });
+
+          for (const pod of pods) {
+            hops.push({
+              source: this.name,
+              table: 'k8s_pods',
+              timestamp: pod.metadata?.creationTimestamp?.toISOString() || new Date().toISOString(),
+              data: {
+                name: pod.metadata?.name,
+                namespace: pod.metadata?.namespace,
+                status: pod.status?.phase,
+                node: pod.spec?.nodeName,
+                restarts: pod.status?.containerStatuses?.reduce(
+                  (sum, c) => sum + c.restartCount,
+                  0
+                ) || 0,
+              },
+            });
+          }
+        }
+      }
+
+      // Trace by service
+      if (identifier === 'service' || identifier === 'service_name') {
+        const servicesResponse = await withRetryAndTimeout(() =>
+          this.coreApi!.listServiceForAllNamespaces()
+        );
+        const service = servicesResponse.body.items.find((s) => s.metadata?.name === value);
+
+        if (service) {
+          hops.push({
+            source: this.name,
+            table: 'k8s_services',
+            timestamp: service.metadata?.creationTimestamp?.toISOString() || new Date().toISOString(),
+            data: {
+              name: service.metadata?.name,
+              namespace: service.metadata?.namespace,
+              type: service.spec?.type,
+              cluster_ip: service.spec?.clusterIP,
+              ports: service.spec?.ports?.map((p) => p.port).join(','),
+            },
+          });
+
+          // Find pods matching service selector
+          const selector = service.spec?.selector;
+          if (selector) {
+            const podsResponse = await withRetryAndTimeout(() =>
+              this.coreApi!.listNamespacedPod(service.metadata?.namespace || 'default')
+            );
+            const pods = podsResponse.body.items.filter((p) => {
+              const podLabels = p.metadata?.labels || {};
+              return Object.entries(selector).every(([key, val]) => podLabels[key] === val);
+            });
+
+            for (const pod of pods) {
+              hops.push({
+                source: this.name,
+                table: 'k8s_pods',
+                timestamp: pod.metadata?.creationTimestamp?.toISOString() || new Date().toISOString(),
+                data: {
+                  name: pod.metadata?.name,
+                  namespace: pod.metadata?.namespace,
+                  status: pod.status?.phase,
+                  node: pod.spec?.nodeName,
+                },
+              });
+            }
+          }
+        }
+      }
+    } catch (error) {
+      logError(error as Error, { 
+        message: 'Failed to trace Kubernetes resource',
+        identifier,
+        value,
+      });
+    }
+
+    return hops;
   }
 
   async healthCheck(): Promise<HealthStatus> {

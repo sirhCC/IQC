@@ -321,8 +321,158 @@ export class DockerPlugin implements DataSourcePlugin {
   }
 
   async trace(identifier: string, value: string): Promise<TraceHop[]> {
-    // TODO: Implement container trace (e.g., follow a container through logs)
-    return [];
+    if (!this.docker) {
+      throw new Error('Docker plugin not initialized');
+    }
+
+    const hops: TraceHop[] = [];
+
+    try {
+      // Trace by container_id or name
+      if (identifier === 'container_id' || identifier === 'name') {
+        const containers = await this.docker.listContainers({ all: true });
+        const container = containers.find((c: any) => {
+          const id = c.Id.substring(0, 12);
+          const names = (c.Names || []).map((n: string) => n.replace(/^\//, ''));
+          return id === value || names.includes(value) || c.Id === value;
+        });
+
+        if (container) {
+          // Add container hop
+          hops.push({
+            source: this.name,
+            table: 'docker_containers',
+            timestamp: new Date(container.Created * 1000).toISOString(),
+            data: {
+              container_id: container.Id.substring(0, 12),
+              name: container.Names?.[0]?.replace(/^\//, ''),
+              image: container.Image,
+              status: container.Status,
+              state: container.State,
+            },
+          });
+
+          // Find related image
+          const images = await this.docker.listImages({ all: true });
+          const image = images.find((img: any) => 
+            container.ImageID === img.Id || container.Image === img.RepoTags?.[0]
+          );
+
+          if (image) {
+            hops.push({
+              source: this.name,
+              table: 'docker_images',
+              timestamp: new Date(image.Created * 1000).toISOString(),
+              data: {
+                image_id: image.Id.replace('sha256:', '').substring(0, 12),
+                repository: image.RepoTags?.[0]?.split(':')[0] || '<none>',
+                tag: image.RepoTags?.[0]?.split(':')[1] || '<none>',
+                size: image.Size,
+              },
+            });
+          }
+
+          // Find related volumes (from container mounts)
+          if (container.Mounts && container.Mounts.length > 0) {
+            const volumeResponse = await this.docker.listVolumes();
+            const volumes = volumeResponse.Volumes || [];
+            
+            for (const mount of container.Mounts) {
+              if (mount.Type === 'volume') {
+                const volume = volumes.find((v: any) => v.Name === mount.Name);
+                if (volume) {
+                  hops.push({
+                    source: this.name,
+                    table: 'docker_volumes',
+                    timestamp: volume.CreatedAt || new Date().toISOString(),
+                    data: {
+                      name: volume.Name,
+                      driver: volume.Driver,
+                      mountpoint: volume.Mountpoint,
+                    },
+                  });
+                }
+              }
+            }
+          }
+
+          // Find related networks
+          if (container.NetworkSettings && container.NetworkSettings.Networks) {
+            const networkNames = Object.keys(container.NetworkSettings.Networks);
+            const networks = await this.docker.listNetworks();
+            
+            for (const networkName of networkNames) {
+              const network = networks.find((n: any) => n.Name === networkName);
+              if (network) {
+                hops.push({
+                  source: this.name,
+                  table: 'docker_networks',
+                  timestamp: network.Created || new Date().toISOString(),
+                  data: {
+                    network_id: network.Id.substring(0, 12),
+                    name: network.Name,
+                    driver: network.Driver,
+                    scope: network.Scope,
+                  },
+                });
+              }
+            }
+          }
+        }
+      }
+
+      // Trace by image
+      if (identifier === 'image' || identifier === 'image_id') {
+        const images = await this.docker.listImages({ all: true });
+        const image = images.find((img: any) => {
+          const id = img.Id.replace('sha256:', '').substring(0, 12);
+          const repoTag = img.RepoTags?.[0];
+          return id === value || img.Id === value || repoTag === value;
+        });
+
+        if (image) {
+          hops.push({
+            source: this.name,
+            table: 'docker_images',
+            timestamp: new Date(image.Created * 1000).toISOString(),
+            data: {
+              image_id: image.Id.replace('sha256:', '').substring(0, 12),
+              repository: image.RepoTags?.[0]?.split(':')[0] || '<none>',
+              tag: image.RepoTags?.[0]?.split(':')[1] || '<none>',
+              size: image.Size,
+            },
+          });
+
+          // Find containers using this image
+          const containers = await this.docker.listContainers({ all: true });
+          const relatedContainers = containers.filter((c: any) => 
+            c.ImageID === image.Id || c.Image === image.RepoTags?.[0]
+          );
+
+          for (const container of relatedContainers) {
+            hops.push({
+              source: this.name,
+              table: 'docker_containers',
+              timestamp: new Date(container.Created * 1000).toISOString(),
+              data: {
+                container_id: container.Id.substring(0, 12),
+                name: container.Names?.[0]?.replace(/^\//, ''),
+                status: container.Status,
+                state: container.State,
+              },
+            });
+          }
+        }
+      }
+    } catch (error) {
+      logError(error as Error, { 
+        message: 'Failed to trace Docker resource',
+        identifier,
+        value,
+      });
+    }
+
+    return hops;
   }
 
   async healthCheck(): Promise<HealthStatus> {
