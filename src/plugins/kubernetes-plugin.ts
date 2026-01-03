@@ -384,7 +384,7 @@ export class KubernetesPlugin implements DataSourcePlugin {
         const podsResponse = await withRetryAndTimeout(() =>
           this.coreApi!.listPodForAllNamespaces()
         );
-        const pod = podsResponse.body.items.find((p) => p.metadata?.name === value);
+        const pod = podsResponse.items.find((p: k8s.V1Pod) => p.metadata?.name === value);
 
         if (pod) {
           // Add pod hop
@@ -399,7 +399,7 @@ export class KubernetesPlugin implements DataSourcePlugin {
               node: pod.spec?.nodeName,
               ip: pod.status?.podIP,
               restarts: pod.status?.containerStatuses?.reduce(
-                (sum, c) => sum + c.restartCount,
+                (sum: number, c) => sum + (c.restartCount || 0),
                 0
               ) || 0,
             },
@@ -411,7 +411,7 @@ export class KubernetesPlugin implements DataSourcePlugin {
             const deploymentsResponse = await withRetryAndTimeout(() =>
               this.appsApi!.listDeploymentForAllNamespaces()
             );
-            const deployment = deploymentsResponse.body.items.find((d) => 
+            const deployment = deploymentsResponse.items.find((d: k8s.V1Deployment) => 
               d.metadata?.namespace === pod.metadata?.namespace &&
               ownerRef.name?.startsWith(d.metadata?.name || '')
             );
@@ -436,7 +436,7 @@ export class KubernetesPlugin implements DataSourcePlugin {
           const servicesResponse = await withRetryAndTimeout(() =>
             this.coreApi!.listServiceForAllNamespaces()
           );
-          const services = servicesResponse.body.items.filter((s) => {
+          const services = servicesResponse.items.filter((s: k8s.V1Service) => {
             if (s.metadata?.namespace !== pod.metadata?.namespace) return false;
             const selector = s.spec?.selector;
             if (!selector) return false;
@@ -455,7 +455,7 @@ export class KubernetesPlugin implements DataSourcePlugin {
                 namespace: service.metadata?.namespace,
                 type: service.spec?.type,
                 cluster_ip: service.spec?.clusterIP,
-                ports: service.spec?.ports?.map((p) => p.port).join(','),
+                ports: service.spec?.ports?.map((p: k8s.V1ServicePort) => p.port).join(','),
               },
             });
           }
@@ -463,16 +463,16 @@ export class KubernetesPlugin implements DataSourcePlugin {
           // Get pod events
           try {
             const eventsResponse = await withRetryAndTimeout(() =>
-              this.coreApi!.listNamespacedEvent(
-                pod.metadata?.namespace || 'default',
-                undefined,
-                undefined,
-                undefined,
-                `involvedObject.name=${pod.metadata?.name}`
-              )
+              this.coreApi!.listEventForAllNamespaces()
             );
 
-            for (const event of eventsResponse.body.items) {
+            // Filter events for this pod
+            const podEvents = eventsResponse.items.filter((event: k8s.CoreV1Event) => 
+              event.involvedObject?.name === pod.metadata?.name &&
+              event.involvedObject?.namespace === pod.metadata?.namespace
+            );
+
+            for (const event of podEvents) {
               hops.push({
                 source: this.name,
                 table: 'k8s_events',
@@ -499,7 +499,7 @@ export class KubernetesPlugin implements DataSourcePlugin {
         const deploymentsResponse = await withRetryAndTimeout(() =>
           this.appsApi!.listDeploymentForAllNamespaces()
         );
-        const deployment = deploymentsResponse.body.items.find((d) => d.metadata?.name === value);
+        const deployment = deploymentsResponse.items.find((d: k8s.V1Deployment) => d.metadata?.name === value);
 
         if (deployment) {
           hops.push({
@@ -517,11 +517,12 @@ export class KubernetesPlugin implements DataSourcePlugin {
 
           // Find pods owned by this deployment
           const podsResponse = await withRetryAndTimeout(() =>
-            this.coreApi!.listNamespacedPod(deployment.metadata?.namespace || 'default')
+            this.coreApi!.listPodForAllNamespaces()
           );
-          const pods = podsResponse.body.items.filter((p) => {
+          const pods = podsResponse.items.filter((p: k8s.V1Pod) => {
             const ownerRef = p.metadata?.ownerReferences?.[0];
-            return ownerRef && ownerRef.name?.startsWith(deployment.metadata?.name || '');
+            return p.metadata?.namespace === deployment.metadata?.namespace &&
+                   ownerRef && ownerRef.name?.startsWith(deployment.metadata?.name || '');
           });
 
           for (const pod of pods) {
@@ -535,7 +536,7 @@ export class KubernetesPlugin implements DataSourcePlugin {
                 status: pod.status?.phase,
                 node: pod.spec?.nodeName,
                 restarts: pod.status?.containerStatuses?.reduce(
-                  (sum, c) => sum + c.restartCount,
+                  (sum: number, c) => sum + (c.restartCount || 0),
                   0
                 ) || 0,
               },
@@ -549,7 +550,7 @@ export class KubernetesPlugin implements DataSourcePlugin {
         const servicesResponse = await withRetryAndTimeout(() =>
           this.coreApi!.listServiceForAllNamespaces()
         );
-        const service = servicesResponse.body.items.find((s) => s.metadata?.name === value);
+        const service = servicesResponse.items.find((s: k8s.V1Service) => s.metadata?.name === value);
 
         if (service) {
           hops.push({
@@ -561,7 +562,7 @@ export class KubernetesPlugin implements DataSourcePlugin {
               namespace: service.metadata?.namespace,
               type: service.spec?.type,
               cluster_ip: service.spec?.clusterIP,
-              ports: service.spec?.ports?.map((p) => p.port).join(','),
+              ports: service.spec?.ports?.map((p: k8s.V1ServicePort) => p.port).join(','),
             },
           });
 
@@ -569,9 +570,10 @@ export class KubernetesPlugin implements DataSourcePlugin {
           const selector = service.spec?.selector;
           if (selector) {
             const podsResponse = await withRetryAndTimeout(() =>
-              this.coreApi!.listNamespacedPod(service.metadata?.namespace || 'default')
+              this.coreApi!.listPodForAllNamespaces()
             );
-            const pods = podsResponse.body.items.filter((p) => {
+            const pods = podsResponse.items.filter((p: k8s.V1Pod) => {
+              if (p.metadata?.namespace !== service.metadata?.namespace) return false;
               const podLabels = p.metadata?.labels || {};
               return Object.entries(selector).every(([key, val]) => podLabels[key] === val);
             });

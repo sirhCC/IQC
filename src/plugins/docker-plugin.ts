@@ -384,7 +384,7 @@ export class DockerPlugin implements DataSourcePlugin {
                   hops.push({
                     source: this.name,
                     table: 'docker_volumes',
-                    timestamp: volume.CreatedAt || new Date().toISOString(),
+                    timestamp: new Date().toISOString(),
                     data: {
                       name: volume.Name,
                       driver: volume.Driver,
